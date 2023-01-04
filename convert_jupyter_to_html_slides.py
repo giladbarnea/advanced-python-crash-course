@@ -27,7 +27,7 @@ def find_reveal_js():
 
 @click.command()
 @click.argument("notebook_path", type=click.Path(exists=True))
-@click.option("--reveal-prefix", required=False)
+@click.option("--reveal-prefix", required=False, default="https://unpkg.com/reveal.js@4.0.2")
 @click.option(
     "--theme",
     default="dark",
@@ -40,11 +40,11 @@ def find_reveal_js():
     type=click.Choice(["sky","serif","solarized","white","beige","moon","dracula","league","blood","simple","black","night"]),
     help="Looks like it only understands light and dark, not dracula etc. dark works best if c.SlidesExporter.reveal_theme = 'dracula' in jupyter_nbconvert_config.py",
 )
-def main(notebook_path: Path, reveal_prefix=None, theme="dark", reveal_theme="dracula"):
+def main(notebook_path: Path, reveal_prefix="https://unpkg.com/reveal.js@4.0.2", theme="dark", reveal_theme="dracula"):
     run_jupyter_nbconvert(notebook_path, reveal_prefix, theme, reveal_theme)
     html_path: Path = Path(notebook_path).with_suffix(".slides.html")
     assert Path(html_path).exists(), f"html file {html_path} not found"
-    txt = replace_some_content(html_path)
+    txt = replace_some_content(html_path, reveal_prefix)
     html_path.write_text(txt)
     # bs = replace_jupyter_code_with_reveal_code(html_path)
     # html_path.write_text(str(bs))
@@ -52,27 +52,25 @@ def main(notebook_path: Path, reveal_prefix=None, theme="dark", reveal_theme="dr
 
 
 def run_jupyter_nbconvert(notebook_path, reveal_prefix, theme, reveal_theme):
-    reveal_js_path = reveal_prefix or find_reveal_js()
+    # reveal_js_path = reveal_prefix or find_reveal_js()
+    # reveal_js_path = "https://unpkg.com/reveal.js@4.0.2"
     cmd = (
         f"jupyter nbconvert {notebook_path} "
         f"--to slides "
         f"--SlidesExporter.reveal_theme={reveal_theme} "
         f"--theme={theme} "
     )
-    if reveal_js_path:
-        cmd += f"--reveal-prefix={reveal_js_path} "
+    if reveal_prefix:
+        cmd += f"--reveal-prefix={reveal_prefix} "
     exit_code = os.system(cmd)
     if exit_code != 0:
         raise RuntimeError(f"jupyter nbconvert failed with exit code {exit_code}")
 
 
-def replace_some_content(html_path):
+def replace_some_content(html_path, reveal_prefix):
     txt = Path(html_path).read_text()
     reveal_initialize = dict(
-        search="""    [
-      "/Users/gilad/dev/advanced-python-crash-course/2022/.internal/reveal.js/dist/reveal.js",
-      "/Users/gilad/dev/advanced-python-crash-course/2022/.internal/reveal.js/plugin/notes/notes.js"
-    ],
+        search="""],
 
     function(Reveal, RevealNotes){
         // Full list of configuration options available here: https://github.com/hakimel/reveal.js#configuration
@@ -84,14 +82,12 @@ def replace_some_content(html_path):
             slideNumber: "",
             plugins: [RevealNotes]
         });""",
-        replace="""[
-            "/Users/gilad/dev/advanced-python-crash-course/2022/.internal/reveal.js/dist/reveal.js",
-            "/Users/gilad/dev/advanced-python-crash-course/2022/.internal/reveal.js/plugin/notes/notes.js",
-            "/Users/gilad/dev/advanced-python-crash-course/2022/.internal/reveal.js/plugin/highlight/highlight.js",
+        replace=f""",
+            "{reveal_prefix}/plugin/highlight/highlight.js",
         ],
 
-        function (Reveal, RevealNotes, RevealHighlight) {
-            Reveal.initialize({
+        function (Reveal, RevealNotes, RevealHighlight) {{
+            Reveal.initialize({{
             controls: false,
             progress: true,
             history: true,
@@ -102,20 +98,22 @@ def replace_some_content(html_path):
             transitionSpeed: "fast",
             // width: "80%",
             plugins: [RevealNotes, RevealHighlight]
-     });""",
+     }});""",
     )
     add_monokai_theme_and_some_css = dict(
         search="""id="theme">""",
-        replace="""id="theme">
-<link rel="stylesheet" href="/Users/gilad/dev/advanced-python-crash-course/2022/.internal/reveal.js/plugin/highlight/monokai.css">
+        replace=f"""id="theme">
+<link rel="stylesheet" href="{reveal_prefix}/plugin/highlight/monokai.css">
 <style>
-.reveal p {
+.reveal p {{
     margin: var(--r-block-margin) 20% var(--r-block-margin) 0;
-}
-.reveal pre {
+}}
+.reveal pre {{
     width: 100%;
     font-size: var(--jp-code-font-size);
-}
+    line-height: 1.3em;
+    font-family: 'Fira Code', 'Roboto Mono', 'Courier New', Courier, monospace;
+}}
 </style>
 """,
     )
